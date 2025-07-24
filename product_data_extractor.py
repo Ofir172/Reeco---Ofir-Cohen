@@ -1,6 +1,8 @@
 import requests
 import pandas as pd
 import csv
+import asyncio
+import aiohttp
 
 # GraphQL endpoint and headers
 url = "https://gateway-api.shop.sysco.com/graphql"
@@ -59,8 +61,8 @@ for cat in category_facet["values"]:
         categories.append((cat["id"], cat["name"]))
 
 
-# Initialize output CSV file
-with open("output.csv", mode="w", newline="", encoding="utf-8-sig") as f:
+# Initialize CSV file
+with open("allproducts.csv", mode="w", newline="", encoding="utf-8-sig") as f:
     writer = csv.DictWriter(f, fieldnames=[
         "Brand Name", "Product Name", "Packaging Information",
         "SKU (Product ID)", "Picture URL", "Description", "Category"
@@ -109,15 +111,10 @@ for category_id, category_name in categories:
 
         data_category = response_category.json()
         products_raw = data_category["data"]["searchProducts"]["results"]
+        product_ids = [p["productId"] for p in products_raw]
 
-        if total_results is None:
-            total_results = data_category["data"]["searchProducts"]["metaInfo"]["totalResults"]
-            print(f"Total products in {category_name}: {total_results}")
 
-        all_products = []
-
-        for p in products_raw:
-            product_id = p["productId"]
+        async def fetch_product_details(session, product_id, category_name):
             payload_product = {
                 "operationName": "getProducts_details_unifiedBFF_SHOP_WEB",
                 "query": query_product,
@@ -141,44 +138,58 @@ for category_id, category_name in categories:
                 }
             }
 
-            response_product = requests.post(url, json=payload_product, headers=headers)
-            if response_product.status_code != 200:
-                print(f"Error fetching product {product_id}")
-                continue
-
             try:
-                data_product = response_product.json()
-                product = data_product["data"]["getProducts"][0]
+                async with session.post(url, json=payload_product, headers=headers) as resp:
+                    if resp.status != 200:
+                        print(f"Error fetching product {product_id}")
+                        return None
 
-                Brand_Name = product.get("productInfo", {}).get("brand", {}).get("name", "").title()
-                Product_Name = str(product.get("productInfo", {}).get("description", ""))
-                pack = product.get("productInfo", {}).get("packSize", {}).get("pack") or ""
-                size = product.get("productInfo", {}).get("packSize", {}).get("size") or ""
-                Packaging_Information = f"{pack}/{size}".strip("/")
-                SKU = product.get("productId", "")
-                images = product.get("productInfo", {}).get("images", [])
-                Picture_URL = images[0] if images else None
-                Description = str(product.get("productInfo", {}).get("featuresAndBenefits", {}).get("productDescriptor", ""))
+                    data_product = await resp.json()
+                    product = data_product["data"]["getProducts"][0]
 
-                all_products.append({
-                    "Brand Name": Brand_Name,
-                    "Product Name": Product_Name,
-                    "Packaging Information": Packaging_Information,
-                    "SKU (Product ID)": SKU,
-                    "Picture URL": Picture_URL,
-                    "Description": Description,
-                    "Category": category_name
-                })
+                    brand_name = product.get("productInfo", {}).get("brand", {}).get("name", "").title()
+                    product_name = str(product.get("productInfo", {}).get("description", ""))
+                    pack = product.get("productInfo", {}).get("packSize", {}).get("pack") or ""
+                    size = product.get("productInfo", {}).get("packSize", {}).get("size") or ""
+                    packaging = f"{pack}/{size}".strip("/")
+                    sku = product.get("productId", "")
+                    images = product.get("productInfo", {}).get("images", [])
+                    picture_url = images[0] if images else None
+                    description = str(
+                        product.get("productInfo", {}).get("featuresAndBenefits", {}).get("productDescriptor", ""))
 
-                product_counter += 1
+                    return {
+                        "Brand Name": brand_name,
+                        "Product Name": product_name,
+                        "Packaging Information": packaging,
+                        "SKU (Product ID)": sku,
+                        "Picture URL": picture_url,
+                        "Description": description,
+                        "Category": category_name
+                    }
 
             except Exception as e:
-                print(f"Error parsing product {product_id}: {e}")
-                continue
+                print(f"Exception for product {product_id}: {e}")
+                return None
+
+
+        async def process_products():
+            async with aiohttp.ClientSession() as session:
+                tasks = [fetch_product_details(session, pid, category_name) for pid in product_ids]
+                results = await asyncio.gather(*tasks)
+                return [r for r in results if r is not None]
+
+
+        all_products = asyncio.run(process_products())
+        product_counter += len(all_products)
+
+        if total_results is None:
+            total_results = data_category["data"]["searchProducts"]["metaInfo"]["totalResults"]
+            print(f"Total products in {category_name}: {total_results}")
 
         # Write current batch of products to CSV
         df = pd.DataFrame(all_products)
-        df.to_csv("output.csv", mode="a", index=False, header=False, encoding="utf-8-sig")
+        df.to_csv("allproducts.csv", mode="a", index=False, header=False, encoding="utf-8-sig")
 
         print(f"Processed page {page_counter} in {category_name} ({product_counter} products total so far)")
 
