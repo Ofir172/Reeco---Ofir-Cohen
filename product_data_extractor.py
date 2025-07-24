@@ -199,3 +199,5 @@ for category_id, category_name in categories:
             break
 
     print(f"Finished category: {category_name} — {product_counter} products")
+
+
