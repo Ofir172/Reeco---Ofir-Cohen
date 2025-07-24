@@ -18,7 +18,7 @@ The scraper collects and organizes approximately **8,000 products** into a clean
   - Description
   - Category
 - 🔁 Full pagination support (products are fetched page by page)
-- 📄 Export to `output.csv` 
+- 📄 Export to `allproducts.csv` 
 
 ---
 
