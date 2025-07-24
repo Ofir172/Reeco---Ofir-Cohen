@@ -7,7 +7,7 @@ The scraper collects and organizes approximately **8,000 products** into a clean
 
 ## 🔍 Features
 
-- ✅ Automatic discovery of all product categories using the `SYSCO_6` filter
+- ✅ Automatic discovery of all product categories
 - 📦 Product data extraction including:
   - Brand name
   - Product name
