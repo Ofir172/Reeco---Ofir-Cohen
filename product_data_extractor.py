@@ -38,6 +38,7 @@ variables_facets = {
     }
 }
 
+# Send initial request to fetch category facet information
 payload_facets = {
     "operationName": "SearchProducts",
     "query": query_category,
@@ -47,21 +48,21 @@ payload_facets = {
 response_facets = requests.post(url, json=payload_facets, headers=headers)
 facets_data = response_facets.json()["data"]["searchProducts"]["facets"]
 
-# Extract categories
+# Find the specific facet containing category taxonomy
 category_facet = None
 for f in facets_data:
     if f.get("id") == "SYSCO_6":
         category_facet = f
         break
 
+# Build a list of category IDs and names for scraping
 categories = []
-
 for cat in category_facet["values"]:
     if cat["id"].startswith("syy_cust_tax_"):
         categories.append((cat["id"], cat["name"]))
 
 
-# Initialize CSV file
+# Initialize the CSV file and write column headers
 with open("allproducts.csv", mode="w", newline="", encoding="utf-8-sig") as f:
     writer = csv.DictWriter(f, fieldnames=[
         "Brand Name", "Product Name", "Packaging Information",
@@ -69,7 +70,7 @@ with open("allproducts.csv", mode="w", newline="", encoding="utf-8-sig") as f:
     ])
     writer.writeheader()
 
-# Iterate through categories and fetch product data
+# Loop over each category and fetch all products using pagination
 for category_id, category_name in categories:
     print(f"\nStarting category: {category_name}")
 
@@ -80,7 +81,7 @@ for category_id, category_name in categories:
     page_counter = 1
 
     while True:
-        # Prepare category query with pagination
+        # Construct GraphQL payload for current category page
         variables_category = {
             "isBestSellerEnabled": False,
             "isUseGraphStockStatusEnabled": True,
@@ -104,6 +105,7 @@ for category_id, category_name in categories:
             "variables": variables_category
         }
 
+        # Fetch current page of products in category
         response_category = requests.post(url, json=payload_category, headers=headers)
         if response_category.status_code != 200:
             print(f"Error fetching category {category_name} (start={start})")
@@ -114,6 +116,7 @@ for category_id, category_name in categories:
         product_ids = [p["productId"] for p in products_raw]
 
 
+        # Async function to fetch and parse product details by product ID
         async def fetch_product_details(session, product_id, category_name):
             payload_product = {
                 "operationName": "getProducts_details_unifiedBFF_SHOP_WEB",
@@ -147,6 +150,7 @@ for category_id, category_name in categories:
                     data_product = await resp.json()
                     product = data_product["data"]["getProducts"][0]
 
+                    # Parse product fields
                     brand_name = product.get("productInfo", {}).get("brand", {}).get("name", "").title()
                     product_name = str(product.get("productInfo", {}).get("description", ""))
                     pack = product.get("productInfo", {}).get("packSize", {}).get("pack") or ""
@@ -173,6 +177,7 @@ for category_id, category_name in categories:
                 return None
 
 
+        # Launch all product detail requests concurrently for current page
         async def process_products():
             async with aiohttp.ClientSession() as session:
                 tasks = [fetch_product_details(session, pid, category_name) for pid in product_ids]
@@ -183,21 +188,21 @@ for category_id, category_name in categories:
         all_products = asyncio.run(process_products())
         product_counter += len(all_products)
 
+        # Print total number of products in the category
         if total_results is None:
             total_results = data_category["data"]["searchProducts"]["metaInfo"]["totalResults"]
             print(f"Total products in {category_name}: {total_results}")
 
-        # Write current batch of products to CSV
+        # Append current batch of products to CSV
         df = pd.DataFrame(all_products)
         df.to_csv("allproducts.csv", mode="a", index=False, header=False, encoding="utf-8-sig")
 
         print(f"Processed page {page_counter} in {category_name} ({product_counter} products total so far)")
 
+        # Move to the next page of results (if any)
         start += num
         page_counter += 1
         if start >= total_results:
             break
 
     print(f"Finished category: {category_name} — {product_counter} products")
-
-
