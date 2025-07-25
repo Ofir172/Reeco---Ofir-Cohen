@@ -1,7 +1,8 @@
 # 🛒 Sysco Product Scraper
 
-A Python script for extracting product data from Sysco's GraphQL API, covering **all categories**.  
-The scraper collects and organizes approximately **8,000 products** into a clean and structured **CSV file** with detailed product attributes.
+A Python script that extracts all products from Sysco’s catalog using a GraphQL API, covering every category.
+The data is organized into a clean, structured **CSV file** containing **8,000+ products** with detailed attributes.
+
 
 **Note:** All data in this project was collected for an account based in **Oregon, ZIP code 97015**.
 >---
@@ -9,6 +10,8 @@ The scraper collects and organizes approximately **8,000 products** into a clean
 ## 🔍 Features
 
 - ✅ Automatic discovery of all product categories
+- ⚡ High-speed scraping
+- 🔁 Full pagination support (products are fetched page by page)
 - 📦 Product data extraction including:
   - Brand name
   - Product name
@@ -17,7 +20,6 @@ The scraper collects and organizes approximately **8,000 products** into a clean
   - Picture URL
   - Description
   - Category
-- 🔁 Full pagination support (products are fetched page by page)
 - 📄 Export to `allproducts.csv` 
 
 ---
